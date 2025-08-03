@@ -25,13 +25,10 @@ class WP_VideoScribe_Transcript_Extractor {
      * @return string|false Transcript text or false on failure
      */
     public function extract_transcript($video_id) {
-        // Try different methods in order of preference
-        $transcript = $this->get_transcript_via_api($video_id);
-        
+        $transcript = $this->get_transcript_via_python($video_id);
         if (!$transcript) {
             $transcript = $this->get_transcript_via_fallback($video_id);
         }
-        
         return $transcript;
     }
     
@@ -120,21 +117,70 @@ class WP_VideoScribe_Transcript_Extractor {
     }
     
     /**
-     * Fallback method using alternative transcript extraction
+     * Fallback method using YouTube's public timedtext endpoint
      * 
      * @param string $video_id YouTube video ID
      * @return string|false Transcript text or false on failure
      */
     private function get_transcript_via_fallback($video_id) {
-        // This could implement alternative methods like:
-        // - Third-party transcript services
-        // - Screen scraping (not recommended)
-        // - User-provided transcripts
-        
-        // For now, return a helpful message
-        return "Transcript extraction requires additional setup. Please refer to the plugin documentation for advanced transcript extraction methods.";
+        // Fetch the list of available caption tracks
+        $list_url = "https://www.youtube.com/api/timedtext?type=list&v={$video_id}";
+        $list_response = wp_remote_get($list_url);
+        if (is_wp_error($list_response)) {
+            return false;
+        }
+        $list_body = wp_remote_retrieve_body($list_response);
+        $tracks_xml = @simplexml_load_string($list_body);
+        if ($tracks_xml === false || !isset($tracks_xml->track)) {
+            return false;
+        }
+
+        // Try to find an English track (prefer asr/auto-generated)
+        $track = null;
+        foreach ($tracks_xml->track as $t) {
+            $lang_code = (string)$t['lang_code'];
+            $kind = (string)$t['kind'];
+            if (in_array($lang_code, ['en', 'en-US', 'en-GB'])) {
+                $track = $t;
+                if ($kind === 'asr') break; // Prefer auto-generated if available
+            }
+        }
+        // If no English, just use the first track
+        if (!$track && isset($tracks_xml->track[0])) {
+            $track = $tracks_xml->track[0];
+        }
+        if (!$track) {
+            return false;
+        }
+
+        // Build the timedtext URL for the selected track
+        $lang_code = (string)$track['lang_code'];
+        $name = urlencode((string)$track['name']);
+        $kind = isset($track['kind']) ? '&kind=' . urlencode((string)$track['kind']) : '';
+        $caption_url = "https://www.youtube.com/api/timedtext?lang={$lang_code}&v={$video_id}{$kind}";
+        if (!empty($name)) {
+            $caption_url .= "&name={$name}";
+        }
+
+        $caption_response = wp_remote_get($caption_url);
+        if (is_wp_error($caption_response)) {
+            return false;
+        }
+        $caption_body = wp_remote_retrieve_body($caption_response);
+        if (empty($caption_body)) {
+            return false;
+        }
+        $xml = @simplexml_load_string($caption_body);
+        if ($xml === false || !isset($xml->text)) {
+            return false;
+        }
+        $transcript = '';
+        foreach ($xml->text as $text) {
+            $transcript .= (string)$text . ' ';
+        }
+        return trim($transcript);
     }
-    
+
     /**
      * Clean and format transcript text
      * 
@@ -193,21 +239,51 @@ class WP_VideoScribe_Transcript_Extractor {
     }
     
     /**
-     * Check if video has captions available
+     * Check if video has captions available (API or fallback)
      * 
      * @param string $video_id YouTube video ID
      * @return bool True if captions are available
      */
     public function has_captions($video_id) {
+        // First, try Data API
         $captions_url = "https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId={$video_id}&key={$this->youtube_api_key}";
         $response = wp_remote_get($captions_url);
-        
-        if (is_wp_error($response)) {
+        if (!is_wp_error($response)) {
+            $data = json_decode(wp_remote_retrieve_body($response), true);
+            if (!empty($data['items'])) {
+                return true;
+            }
+        }
+        // Fallback: try timedtext endpoint
+        $langs = ['en', 'en-US', 'en-GB'];
+        foreach ($langs as $lang) {
+            $url = "https://www.youtube.com/api/timedtext?lang={$lang}&v={$video_id}";
+            $response = wp_remote_get($url);
+            if (!is_wp_error($response) && !empty(wp_remote_retrieve_body($response))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get transcript using a Python script (advanced method)
+     * 
+     * @param string $video_id YouTube video ID
+     * @return string|false Transcript text or false on failure
+     */
+    private function get_transcript_via_python($video_id) {
+        $python = 'python3'; // or the path to your python3 binary
+        $script = __DIR__ . '/get_transcript.py';
+        $cmd = escapeshellcmd("$python $script " . escapeshellarg($video_id));
+        $output = shell_exec($cmd);
+        if (!$output) {
             return false;
         }
-        
-        $data = json_decode(wp_remote_retrieve_body($response), true);
-        
-        return !empty($data['items']);
+        $result = json_decode($output, true);
+        if (isset($result['transcript'])) {
+            return $result['transcript'];
+        }
+        return false;
     }
 }
