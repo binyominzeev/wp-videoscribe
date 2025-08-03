@@ -4,7 +4,7 @@
  * Plugin URI: https://github.com/your-username/wp-videoscribe
  * Description: Generate blog post summaries and title suggestions from YouTube videos using AI, then create WordPress post drafts automatically.
  * Version: 1.0.0
- * Author: Your Name
+ * Author: Binjomin Szanto-Varnagy
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain: wp-videoscribe
@@ -404,7 +404,7 @@ class WPVideoScribe {
         if (empty($openai_api_key)) {
             $errors[] = __('OpenAI API key is not configured', 'wp-videoscribe');
         } else {
-            $response = wp_remote_post('https://api.openai.com/v1/models', array(
+            $response = wp_remote_get('https://api.openai.com/v1/models', array(
                 'headers' => array(
                     'Authorization' => 'Bearer ' . $openai_api_key,
                     'Content-Type' => 'application/json',
