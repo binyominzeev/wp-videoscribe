@@ -41,8 +41,7 @@ class WPVideoScribe {
     }
     
     public function activate() {
-        // Create options for API keys if they don't exist
-        add_option('wp_videoscribe_youtube_api_key', '');
+        // Only create OpenAI API key option
         add_option('wp_videoscribe_openai_api_key', '');
     }
     
@@ -94,11 +93,10 @@ class WPVideoScribe {
     public function settings_page() {
         if (isset($_POST['submit'])) {
             check_admin_referer('wp_videoscribe_settings');
-            update_option('wp_videoscribe_youtube_api_key', sanitize_text_field($_POST['youtube_api_key']));
             update_option('wp_videoscribe_openai_api_key', sanitize_text_field($_POST['openai_api_key']));
             echo '<div class="notice notice-success"><p>' . __('Settings saved!', 'wp-videoscribe') . '</p></div>';
         }
-        
+
         include WP_VIDEOSCRIBE_PLUGIN_DIR . 'templates/settings-page.php';
     }
     
@@ -151,31 +149,24 @@ class WPVideoScribe {
     }
     
     private function get_video_data($video_id) {
-        $youtube_api_key = get_option('wp_videoscribe_youtube_api_key');
-        
-        if (empty($youtube_api_key)) {
-            throw new Exception(__('YouTube API key not configured', 'wp-videoscribe'));
-        }
-        
-        // Get video details
-        $video_url = "https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id={$video_id}&key={$youtube_api_key}";
+        $api_key = get_option('wp_videoscribe_youtube_api_key'); // Add this to your settings
+        $video_url = "https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id={$video_id}&key={$api_key}";
         $video_response = wp_remote_get($video_url);
-        
+
         if (is_wp_error($video_response)) {
             throw new Exception(__('Failed to fetch video details', 'wp-videoscribe'));
         }
-        
+
         $video_data = json_decode(wp_remote_retrieve_body($video_response), true);
-        
+
         if (empty($video_data['items'])) {
             throw new Exception(__('Video not found', 'wp-videoscribe'));
         }
-        
+
         $video_info = $video_data['items'][0];
-        
-        // Get video transcript (using youtube-transcript-api approach)
+
         $transcript = $this->get_video_transcript($video_id);
-        
+
         return array(
             'id' => $video_id,
             'title' => $video_info['snippet']['title'],
@@ -186,27 +177,18 @@ class WPVideoScribe {
             'transcript' => $transcript
         );
     }
-    
+
     private function get_video_transcript($video_id) {
-        $youtube_api_key = get_option('wp_videoscribe_youtube_api_key');
-        
-        if (empty($youtube_api_key)) {
-            throw new Exception(__('YouTube API key not configured', 'wp-videoscribe'));
-        }
-        
-        $extractor = new WP_VideoScribe_Transcript_Extractor($youtube_api_key);
-        
-        // Check if video has captions
-        if (!$extractor->has_captions($video_id)) {
-            throw new Exception(__('No captions available for this video', 'wp-videoscribe'));
-        }
-        
+        // No need for YouTube API key
+        $extractor = new WP_VideoScribe_Transcript_Extractor(null);
+
+        // Optionally remove has_captions check if your backend always returns transcript or error
         $transcript = $extractor->extract_transcript($video_id);
-        
+
         if (!$transcript) {
             throw new Exception(__('Failed to extract video transcript', 'wp-videoscribe'));
         }
-        
+
         return $extractor->clean_transcript($transcript);
     }
     
@@ -371,35 +353,14 @@ class WPVideoScribe {
     
     public function test_api_configuration() {
         check_ajax_referer('wp_videoscribe_test_apis', 'nonce');
-        
+
         if (!current_user_can('manage_options')) {
             wp_die(__('Unauthorized', 'wp-videoscribe'));
         }
-        
-        $youtube_api_key = get_option('wp_videoscribe_youtube_api_key');
+
         $openai_api_key = get_option('wp_videoscribe_openai_api_key');
-        
         $errors = array();
-        
-        // Test YouTube API
-        if (empty($youtube_api_key)) {
-            $errors[] = __('YouTube API key is not configured', 'wp-videoscribe');
-        } else {
-            $test_url = "https://www.googleapis.com/youtube/v3/videos?part=snippet&id=dQw4w9WgXcQ&key={$youtube_api_key}";
-            $response = wp_remote_get($test_url);
-            
-            if (is_wp_error($response)) {
-                $errors[] = __('YouTube API test failed: ', 'wp-videoscribe') . $response->get_error_message();
-            } else {
-                $response_code = wp_remote_retrieve_response_code($response);
-                if ($response_code !== 200) {
-                    $body = json_decode(wp_remote_retrieve_body($response), true);
-                    $error_message = isset($body['error']['message']) ? $body['error']['message'] : 'Unknown error';
-                    $errors[] = __('YouTube API test failed: ', 'wp-videoscribe') . $error_message;
-                }
-            }
-        }
-        
+
         // Test OpenAI API
         if (empty($openai_api_key)) {
             $errors[] = __('OpenAI API key is not configured', 'wp-videoscribe');
@@ -411,7 +372,7 @@ class WPVideoScribe {
                 ),
                 'timeout' => 30
             ));
-            
+
             if (is_wp_error($response)) {
                 $errors[] = __('OpenAI API test failed: ', 'wp-videoscribe') . $response->get_error_message();
             } else {
@@ -423,7 +384,7 @@ class WPVideoScribe {
                 }
             }
         }
-        
+
         if (!empty($errors)) {
             wp_send_json_error(implode('<br>', $errors));
         } else {

@@ -13,6 +13,7 @@ if (!defined('ABSPATH')) {
 class WP_VideoScribe_Transcript_Extractor {
     
     private $youtube_api_key;
+    private $backend_api_base = 'http://217.13.101.122:8000';
     
     public function __construct($api_key) {
         $this->youtube_api_key = $api_key;
@@ -25,11 +26,16 @@ class WP_VideoScribe_Transcript_Extractor {
      * @return string|false Transcript text or false on failure
      */
     public function extract_transcript($video_id) {
-        $transcript = $this->get_transcript_via_python($video_id);
-        if (!$transcript) {
-            $transcript = $this->get_transcript_via_fallback($video_id);
+        $url = $this->backend_api_base . '/transcript?video_id=' . urlencode($video_id);
+        $response = wp_remote_get($url, array('timeout' => 30));
+        if (is_wp_error($response)) {
+            return false;
         }
-        return $transcript;
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        if (isset($data['transcript'])) {
+            return $data['transcript'];
+        }
+        return false;
     }
     
     /**

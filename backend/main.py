@@ -10,8 +10,20 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Set this in your VPS environment
 @app.get("/transcript")
 async def get_transcript(video_id: str):
     try:
-        transcript = YouTubeTranscriptApi.get_transcript(video_id)
-        text = " ".join([entry['text'] for entry in transcript])
+        print(f"Fetching transcript for video ID: {video_id}")
+        ytt_api = YouTubeTranscriptApi()
+        transcript_list = ytt_api.list(video_id)
+
+        # Find the first generated transcript
+        generated_transcript = None
+        for t in transcript_list:
+            if getattr(t, "is_generated", False):
+                generated_transcript = t
+                break
+
+        transcript=ytt_api.fetch(video_id, languages=[generated_transcript.language_code])
+
+        text = "\n".join([snippet.text for snippet in transcript])
         return {"transcript": text}
     except (TranscriptsDisabled, NoTranscriptFound):
         raise HTTPException(status_code=404, detail="No transcript available")
