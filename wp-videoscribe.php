@@ -205,30 +205,35 @@ class WPVideoScribe {
             $transcript = substr($transcript, 0, $max_transcript_length) . '...';
         }
         
-        $prompt="Az alábbi szöveg egy tórai tanításomról készült gépi átirat. Készíts el ez alapján 1. egy részletes, jól formázott dokumentumot (minimum 800-1200 szó, elsősorban folyó szöveg, nem vázlatos), mely minden lényeges kérdést részletesen kifejt, valamint a főbb idézett forrásokat és említett konklúziókat is pontosan idézi és kontextusba helyezi, de nem tesz hozzá semmi olyasmit, ami nem hangzott el a tanításban. A dokumentum legyen átfogó és alapos. Valamint: 2. generálj 15 figyelemfelkeltő címet, melyek közül a legjobbakat használhatom a blogbejegyzés címeként. A válaszodat JSON formátumban add meg, mely tartalmazza a 'summary' és 'titles' kulcsokat. A summary legyen részletes és kifejtő.\n\nTranszkript: {$transcript}";
-        
+        $prompt = <<<EOT
+        Az alábbi szöveg egy tórai tanításomról készült gépi átirat. Készíts belőle egy részletes, jól formázott dokumentumot (minimum 1000 szó), amely átfogóan és világosan, összefüggő prózában írja le a tanítás tartalmát. Legyen benne bevezetés, fő gondolatmenet és zárás. Minden érdemi forrásidézetet (pl. Tóra, Talmud, Rambam, Midrás) pontosan nevezz meg, és helyezd kontextusba. Ne adj hozzá semmilyen új információt, csak a szövegben elhangzott gondolatokat rendszerezd és fogalmazd meg világosan.
+
+        Transzkript: {$transcript}
+        EOT;
+
         $response = wp_remote_post('https://api.openai.com/v1/chat/completions', array(
             'headers' => array(
                 'Authorization' => 'Bearer ' . $openai_api_key,
-                'Content-Type' => 'application/json',
+                'Content-Type'  => 'application/json',
             ),
             'body' => json_encode(array(
-                'model' => 'gpt-4-turbo-preview', // Use GPT-4 Turbo with 128k context
+                'model' => 'gpt-4-1106-preview', // Legfrissebb stabil GPT-4 Turbo modell
                 'messages' => array(
                     array(
                         'role' => 'system',
-                        'content' => 'Te egy szakértő szerkesztő vagy, aki részletes, átfogó dokumentumokat készít. Mindig alapos, kifejtő stílusban írj, és tartsd be a megadott minimális hosszúságot.'
+                        'content' => 'Te egy profi szerkesztő vagy, aki hosszú, jól strukturált, kifejező és stílusos dokumentumokat készít tanítások alapján. Figyelj a tagolásra, forrásidézetekre, és soha ne rövidítsd le a tartalmat, ha nem muszáj.'
                     ),
                     array(
                         'role' => 'user',
                         'content' => $prompt
                     )
                 ),
-                'max_tokens' => 3000, // Reduced to fit within context limit
-                'temperature' => 0.3
+                'temperature' => 0.4,
+                'max_tokens' => 4096 // Megemelve, hogy beleférjen egy hosszú dokumentum is
             )),
             'timeout' => 120
         ));
+
         
         if (is_wp_error($response)) {
             throw new Exception(__('Failed to generate AI content', 'wp-videoscribe'));
