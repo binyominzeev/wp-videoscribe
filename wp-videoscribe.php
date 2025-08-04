@@ -199,12 +199,13 @@ class WPVideoScribe {
             throw new Exception(__('OpenAI API key not configured', 'wp-videoscribe'));
         }
         
-        $prompt = "Based on the following video transcript, please:\n\n";
-        $prompt .= "1. Create a comprehensive blog post summary (300-500 words)\n";
-        $prompt .= "2. Generate 15 engaging title suggestions\n\n";
-        $prompt .= "Video Title: {$video_title}\n\n";
-        $prompt .= "Transcript: {$transcript}\n\n";
-        $prompt .= "Please format your response as JSON with 'summary' and 'titles' keys.";
+        // Truncate transcript if it's too long (rough estimate: 1 token ≈ 4 characters)
+        $max_transcript_length = 12000; // ~3000 tokens for transcript
+        if (strlen($transcript) > $max_transcript_length) {
+            $transcript = substr($transcript, 0, $max_transcript_length) . '...';
+        }
+        
+        $prompt="Az alábbi szöveg egy tórai tanításomról készült gépi átirat. Készíts el ez alapján 1. egy részletes, jól formázott dokumentumot (minimum 800-1200 szó, elsősorban folyó szöveg, nem vázlatos), mely minden lényeges kérdést részletesen kifejt, valamint a főbb idézett forrásokat és említett konklúziókat is pontosan idézi és kontextusba helyezi, de nem tesz hozzá semmi olyasmit, ami nem hangzott el a tanításban. A dokumentum legyen átfogó és alapos. Valamint: 2. generálj 15 figyelemfelkeltő címet, melyek közül a legjobbakat használhatom a blogbejegyzés címeként. A válaszodat JSON formátumban add meg, mely tartalmazza a 'summary' és 'titles' kulcsokat. A summary legyen részletes és kifejtő.\n\nTranszkript: {$transcript}";
         
         $response = wp_remote_post('https://api.openai.com/v1/chat/completions', array(
             'headers' => array(
@@ -212,17 +213,21 @@ class WPVideoScribe {
                 'Content-Type' => 'application/json',
             ),
             'body' => json_encode(array(
-                'model' => 'gpt-3.5-turbo',
+                'model' => 'gpt-4-turbo-preview', // Use GPT-4 Turbo with 128k context
                 'messages' => array(
+                    array(
+                        'role' => 'system',
+                        'content' => 'Te egy szakértő szerkesztő vagy, aki részletes, átfogó dokumentumokat készít. Mindig alapos, kifejtő stílusban írj, és tartsd be a megadott minimális hosszúságot.'
+                    ),
                     array(
                         'role' => 'user',
                         'content' => $prompt
                     )
                 ),
-                'max_tokens' => 1500,
-                'temperature' => 0.7
+                'max_tokens' => 3000, // Reduced to fit within context limit
+                'temperature' => 0.3
             )),
-            'timeout' => 60
+            'timeout' => 120
         ));
         
         if (is_wp_error($response)) {

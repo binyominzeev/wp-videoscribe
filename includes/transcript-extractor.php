@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
 class WP_VideoScribe_Transcript_Extractor {
     
     private $youtube_api_key;
-    private $backend_api_base = 'http://217.13.101.122:8000';
+    private $backend_api_base = 'http://videoscribe.binjomin.hu';
     
     public function __construct($api_key) {
         $this->youtube_api_key = $api_key;
